@@ -159,7 +159,8 @@ Administrators can view activity logs for all document-related actions (uploads,
 - **FR-002**: System MUST accept the following file types: PDF, Word documents, Excel spreadsheets, PowerPoint presentations, plain text files, JPEG images, and PNG images.
 - **FR-003**: System MUST reject files larger than 25 MB with a clear error message identifying the size limit.
 - **FR-004**: System MUST reject file types not on the supported list with a clear error message listing accepted types.
-- **FR-005**: System MUST scan uploaded files for viruses and malware before making them available to users.
+- **FR-005**: System MUST scan uploaded files for viruses and malware. When scanning is available, scanning MUST complete before the document is made accessible to other users. When scanning is unavailable, the system MUST allow the upload to succeed but MUST mark the document as "unscanned pending review" until scanning can be completed.
+- **FR-005a**: Documents marked "unscanned pending review" MUST be clearly flagged in all document lists and views until scanning confirms them clean or flags them as malicious. Administrators MUST be able to see all unscanned documents.
 - **FR-006**: System MUST display a progress indicator during file upload.
 - **FR-007**: System MUST display a success or failure message when an upload completes.
 - **FR-008**: System MUST require users to provide a document title and category when uploading.
@@ -197,13 +198,18 @@ Administrators can view activity logs for all document-related actions (uploads,
 
 - **FR-026**: A document's uploader MUST be able to delete their own documents after confirming the action.
 - **FR-027**: Project Managers MUST be able to delete any document associated with their projects.
-- **FR-028**: Deleted documents MUST be permanently removed from the system after user confirmation.
+- **FR-028**: Deleted documents MUST be permanently removed from the system after user confirmation. Upon deletion, the system MUST immediately revoke all shares, remove the document from all recipients' "Shared with Me" views, and send each recipient an in-app notification informing them the document has been removed.
 
 **Sharing**
 
 - **FR-029**: Document owners MUST be able to share a document with specific individual users or with project teams.
 - **FR-030**: System MUST send an in-app notification to each recipient when a document is shared with them.
-- **FR-031**: Shared documents MUST appear in the recipient's "Shared with Me" section.
+- **FR-031**: Shared documents MUST appear in the recipient's "Shared with Me" tab on the Documents page. The Documents page MUST present at least two tabs: "My Documents" and "Shared with Me".
+
+**Upload Entry Points**
+
+- **FR-032a**: The system MUST provide a single reusable upload modal that can be invoked from the Documents page, the task detail page, and the dashboard.
+- **FR-032b**: When the upload modal is opened from a task detail page, it MUST pre-fill the associated project field with that task's project and allow the user to change it.
 
 **Task Integration**
 
@@ -228,7 +234,7 @@ Administrators can view activity logs for all document-related actions (uploads,
 **Role-Based Access**
 
 - **FR-040**: Employees MUST only be able to upload documents to projects they are assigned to.
-- **FR-041**: Team Leads MUST be able to view and download documents uploaded by members of their teams.
+- **FR-041**: Team Leads MUST be able to view and download documents uploaded by members of their teams, but only for documents associated with projects that both the Team Lead and the team member belong to. Team Leads MUST NOT have access to team members' personal documents or documents in unshared projects.
 - **FR-042**: Project Managers MUST be able to view and manage all documents associated with their projects.
 - **FR-043**: Administrators MUST have full read access to all documents for audit and compliance purposes.
 
@@ -252,6 +258,16 @@ Administrators can view activity logs for all document-related actions (uploads,
 - **SC-006**: Document list pages render within 2 seconds for a user with up to 500 accessible documents.
 - **SC-007**: Document search returns results within 2 seconds.
 - **SC-008**: PDF and image previews appear within 3 seconds of the user initiating the preview.
+
+## Clarifications
+
+### Session 2026-04-28
+
+- Q: What happens when the virus/malware scanning mechanism is unavailable during an upload attempt? → A: Fail open — allow the upload but flag the document as "unscanned pending review" until scanning completes.
+- Q: Is a Team Lead's visibility over team members' documents scoped to shared projects only, all documents except Personal Files, or all documents? → A: Project-scoped only — Team Leads see team member documents only when those documents are associated with a project the Team Lead and team member share.
+- Q: Where does the "Shared with Me" section appear in the navigation — tab within Documents page, separate nav item, or section within My Documents? → A: Tab within Documents page — "Shared with Me" is a tab alongside "My Documents" on the Documents page.
+- Q: When a shared document is deleted, what happens to existing shares and recipients? → A: Remove access immediately and notify recipients — deletion revokes all shares, removes the document from all "Shared with Me" views, and sends each recipient an in-app notification that the document was removed.
+- Q: Is the upload interface a dedicated full page, a shared modal, or an inline panel? → A: Shared upload modal — a single reusable modal invoked from any context (Documents page, task detail, dashboard); it pre-fills the associated project when opened from a task.
 
 ## Assumptions
 
