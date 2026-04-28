@@ -31,7 +31,18 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Verify each principle from `.specify/memory/constitution.md` v1.0.0:
+
+- [ ] **I. Spec-Driven Development** — spec.md exists and contains user stories with
+  acceptance criteria before any implementation has begun.
+- [ ] **II. Offline-First / Abstraction** — all new infrastructure dependencies are
+  hidden behind interfaces; feature works without network/cloud access.
+- [ ] **III. Security-Conscious Development** — defense in depth confirmed: middleware,
+  `[Authorize]`, and service-level authorization checks planned for all new endpoints/pages.
+- [ ] **IV. Separation of Concerns** — new code stays within its layer (Pages call
+  Services, Services own logic, Models are plain entities).
+- [ ] **V. Simplicity** — no complexity beyond what the spec requires; any deviations
+  are documented in the Complexity Tracking table below.
 
 ## Project Structure
 
