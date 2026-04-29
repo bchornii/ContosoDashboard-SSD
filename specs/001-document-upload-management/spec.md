@@ -109,6 +109,24 @@ A document owner shares a document with specific users or teams. Recipients rece
 
 ---
 
+### User Story 6 (P6) - Background Scan Processing (Priority: P6)
+
+After a file has been uploaded with a scan status of "UnscannedPendingReview", a background process eventually picks it up, submits it for scanning, and updates its status to either "Clean" or "Malicious". If the scan result is "Malicious", the document is soft-deleted, all existing shares are revoked, and the uploader receives an in-app notification. The scan trigger mechanism is kept behind an interface (`IScanQueueService`) so the feature works without any cloud dependency; the default training implementation is an in-process no-op or stub, and an Azure Functions + Azure Queue Storage implementation is the documented production swap-in.
+
+**Why this priority**: Async background scanning closes the gap left by the fail-open upload policy (FR-005). It ensures that documents uploaded while scanning was unavailable are eventually assessed, and that confirmed malicious files are removed before they cause harm. It is P6 because it depends on the core upload flow (P1) being fully operational.
+
+**Independent Test**: Can be tested by uploading a file that triggers the stub scanner (or a configurable test stub that returns "Malicious"), waiting for the background processing cycle, and verifying the document's scan status changes, the document is no longer accessible, all shares are revoked, and the uploader's notification list contains the removal alert.
+
+**Acceptance Scenarios**:
+
+1. **Given** a document with `ScanStatus = "UnscannedPendingReview"`, **When** the background scan job processes it and the scan result is "Clean", **Then** the document's scan status is updated to "Clean" and the document becomes fully accessible to all permitted users.
+2. **Given** a document with `ScanStatus = "UnscannedPendingReview"`, **When** the background scan job processes it and the scan result is "Malicious", **Then** the document is soft-deleted, all shares for that document are revoked, and the uploader receives an in-app notification explaining the removal.
+3. **Given** a document that has been soft-deleted due to a "Malicious" scan result, **When** any user attempts to access, download, or preview it, **Then** the system denies the request.
+4. **Given** users who had a "Malicious" document shared with them, **When** the document is removed due to the scan result, **Then** it no longer appears in their "Shared with Me" view.
+5. **Given** the system is running offline with no cloud connectivity, **When** a file is uploaded, **Then** the in-process stub `IScanQueueService` implementation enqueues the scan without error, and the document remains in "UnscannedPendingReview" until connectivity is restored or the stub scan cycle runs.
+
+---
+
 ### User Story 7 - Task and Dashboard Integration (Priority: P5)
 
 When viewing a task, users can see and attach related documents. The dashboard home page displays a "Recent Documents" widget showing the user's last 5 uploads, and summary cards include a document count.
@@ -238,13 +256,25 @@ Administrators can view activity logs for all document-related actions (uploads,
 - **FR-042**: Project Managers MUST be able to view and manage all documents associated with their projects.
 - **FR-043**: Administrators MUST have full read access to all documents for audit and compliance purposes.
 
+**Background Scan Processing**
+
+- **FR-044**: The system MUST provide an `IScanQueueService` interface that abstracts the mechanism used to enqueue a document for background virus/malware scanning. No business logic or page code may reference a concrete scan queue implementation directly.
+- **FR-045**: The default (training/offline) implementation of `IScanQueueService` MUST be a no-op or in-process stub that fulfils the interface contract without requiring any cloud service, network access, or external process. The production swap-in (Azure Functions + Azure Queue Storage) MUST be documented as a deployment note but MUST NOT be a hard dependency of the feature.
+- **FR-046**: The background scan processor MUST query for all documents with `ScanStatus = "UnscannedPendingReview"` and submit each to the scan mechanism provided by `IScanQueueService`.
+- **FR-047**: When the background scan processor receives a "Clean" result for a document, the system MUST update that document's `ScanStatus` to "Clean". The document MUST then be treated as fully accessible according to its existing permission rules.
+- **FR-048**: When the background scan processor receives a "Malicious" result for a document, the system MUST: (a) soft-delete the document so it is no longer accessible to any user; (b) revoke all existing shares for that document; (c) send an in-app notification to the document's uploader informing them that the file was removed due to a security scan failure.
+- **FR-049**: After a document is soft-deleted due to a "Malicious" scan result, the system MUST deny all download, preview, and access requests for that document regardless of the requester's role.
+- **FR-050**: Recipients who had a "Malicious" document shared with them MUST have that document removed from their "Shared with Me" view immediately upon soft-deletion.
+- **FR-051**: Administrators MUST be able to view all documents currently in "UnscannedPendingReview" status and all documents that have been soft-deleted due to a "Malicious" scan result, in the audit interface.
+
 ### Key Entities
 
-- **Document**: Represents an uploaded file and its associated metadata. Key attributes: title, description, category, tags, upload date and time, uploader identity, file size, file type, associated project (optional).
+- **Document**: Represents an uploaded file and its associated metadata. Key attributes: title, description, category, tags, upload date and time, uploader identity, file size, file type, associated project (optional), scan status (`UnscannedPendingReview`, `Clean`, `Malicious`).
 - **Document Category**: A fixed set of labels used to classify documents (Project Documents, Team Resources, Personal Files, Reports, Presentations, Other).
 - **Document Share**: Represents a sharing relationship between a document and a recipient (user or team). Tracks who shared, who received, and when.
-- **Document Activity Log**: An immutable record of a document-related event (upload, download, delete, share), capturing the actor, action type, document, and timestamp.
+- **Document Activity Log**: An immutable record of a document-related event (upload, download, delete, share, scan result), capturing the actor, action type, document, and timestamp.
 - **Tag**: A user-defined keyword attached to one or more documents to aid discovery.
+- **IScanQueueService**: An interface abstraction for the background scan enqueueing mechanism. The default implementation is an in-process no-op stub. The documented production implementation uses Azure Functions and Azure Queue Storage, but that implementation is a deployment-time DI swap and carries no compile-time or runtime dependency on Azure.
 
 ## Success Criteria *(mandatory)*
 
@@ -278,6 +308,7 @@ Administrators can view activity logs for all document-related actions (uploads,
 - Users removed from a project lose access to documents shared exclusively via that project membership; documents they personally uploaded remain in their "My Documents" view.
 - File storage is available and sufficient for the expected document volume during the initial release period; storage quota management is out of scope.
 - Documents associated with a deleted project are still accessible to their original uploaders but no longer appear in project document views.
+- The `IScanQueueService` in-process stub may complete the scan cycle synchronously (e.g., immediately mark all pending documents as "Clean") in the training environment; this is an explicit, documented simplification and does not represent the production behaviour.
 
 ## Out of Scope
 

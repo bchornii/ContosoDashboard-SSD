@@ -30,7 +30,7 @@ hooks:
   - extension: git
     command: speckit.git.commit
     enabled: true
-    optional: true
+    optional: false
     prompt: Commit outstanding changes before planning?
     description: Auto-commit before implementation planning
     condition: null
