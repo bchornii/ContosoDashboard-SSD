@@ -1,25 +1,34 @@
 @inherits LayoutComponentBase
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using ContosoDashboard.Services
+@using Microsoft.Extensions.DependencyInjection
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IServiceScopeFactory ScopeFactory
+@inject NotificationStateService NotificationState
+@implements IDisposable
 
 <div class="page">
     <div class="sidebar">
-        <NavMenu />
+        <NavMenu UnreadNotificationCount="unreadCount" />
     </div>
 
     <main>
         <div class="top-row px-4">
             <AuthorizeView>
                 <Authorized>
-                    <span class="me-3">
+                    <span class="me-3 username-display">
                         <i class="bi bi-person-circle"></i> @context.User.Identity?.Name
                     </span>
                     <a href="/profile" class="me-3">
                         <i class="bi bi-gear"></i> Settings
                     </a>
-                    <a href="/notifications" class="me-3">
+                    <a href="/notifications" class="me-3 position-relative">
                         <i class="bi bi-bell"></i> Notifications
+                        @if (unreadCount > 0)
+                        {
+                            <span class="badge bg-danger rounded-pill ms-1">@unreadCount</span>
+                        }
                     </a>
                     <a href="/logout" class="ms-auto">
                         <i class="bi bi-box-arrow-right"></i> Logout
@@ -38,3 +47,38 @@
         </article>
     </main>
 </div>
+
+@code {
+    private int unreadCount = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNotificationCount();
+        NotificationState.OnNotificationCountChanged += OnNotificationCountChanged;
+    }
+
+    private async Task LoadNotificationCount()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+        {
+            // Create a separate scope to avoid DbContext concurrency issues
+            using var scope = ScopeFactory.CreateScope();
+            var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            unreadCount = await notificationService.GetUnreadCountAsync(userId);
+        }
+    }
+
+    private async Task OnNotificationCountChanged()
+    {
+        await LoadNotificationCount();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        NotificationState.OnNotificationCountChanged -= OnNotificationCountChanged;
+    }
+}

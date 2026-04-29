@@ -50,6 +50,16 @@ main {
     text-decoration: underline;
 }
 
+.username-display {
+    outline: none !important;
+    border: none !important;
+}
+
+.username-display:focus {
+    outline: none !important;
+    border: none !important;
+}
+
 .summary-card {
     border-left: 4px solid #0078d4;
     transition: box-shadow 0.3s ease;
@@ -129,20 +139,20 @@ main {
     }
 }
 
-.nav-item {
+.sidebar .nav-item {
     font-size: 0.9rem;
     padding-bottom: 0.5rem;
 }
 
-.nav-item:first-of-type {
+.sidebar .nav-item:first-of-type {
     padding-top: 1rem;
 }
 
-.nav-item:last-of-type {
+.sidebar .nav-item:last-of-type {
     padding-bottom: 1rem;
 }
 
-.nav-link {
+.sidebar .nav-link {
     color: rgba(255, 255, 255, 0.8);
     border-radius: 4px;
     height: 3rem;
@@ -151,14 +161,27 @@ main {
     line-height: 3rem;
 }
 
-.nav-link:hover {
+.sidebar .nav-link:hover {
     background-color: rgba(255, 255, 255, 0.1);
     color: white;
 }
 
-.nav-link.active {
+.sidebar .nav-link.active {
     background-color: rgba(255, 255, 255, 0.25);
     color: white;
+}
+
+/* Ensure tabs have proper colors */
+.nav-tabs .nav-link {
+    color: #495057;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #0056b3;
+}
+
+.nav-tabs .nav-link.active {
+    color: #495057;
 }
 
 .content {

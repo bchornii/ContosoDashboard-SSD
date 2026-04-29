@@ -1,3 +1,7 @@
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using ContosoDashboard.Services
+
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">ContosoDashboard</a>
@@ -41,6 +45,10 @@
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="notifications">
                 <span class="bi bi-bell" aria-hidden="true"></span> Notifications
+                @if (UnreadNotificationCount > 0)
+                {
+                    <span class="badge bg-danger rounded-pill ms-2">@UnreadNotificationCount</span>
+                }
             </NavLink>
         </div>
 
@@ -51,3 +59,8 @@
         </div>
     </nav>
 </div>
+
+@code {
+    [Parameter]
+    public int UnreadNotificationCount { get; set; }
+}

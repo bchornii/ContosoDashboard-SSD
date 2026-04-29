@@ -5,6 +5,7 @@
 @using System.Security.Claims
 @attribute [Authorize]
 @inject ITaskService TaskService
+@inject IDocumentService DocumentService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>My Tasks - ContosoDashboard</PageTitle>
@@ -133,10 +134,122 @@
             </table>
         </div>
     }
+
+    <!-- Task Details Section -->
+    @if (selectedTask != null)
+    {
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Task Details</h5>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CloseTaskDetails">
+                    <i class="bi bi-x-lg"></i> Close
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Title:</strong> @selectedTask.Title
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Status:</strong> <span class="badge bg-@GetStatusColor(selectedTask.Status)">@selectedTask.Status</span>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Priority:</strong> <span class="badge bg-@GetPriorityColor(selectedTask.Priority)">@selectedTask.Priority</span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <strong>Description:</strong>
+                        <p>@(selectedTask.Description ?? "No description")</p>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <strong>Due Date:</strong> @(selectedTask.DueDate?.ToString("yyyy-MM-dd") ?? "Not set")
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Project:</strong> @(selectedTask.Project?.Name ?? "Personal")
+                    </div>
+                </div>
+
+                <!-- Related Documents Section -->
+                <hr />
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Related Documents</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="ShowAttachDocumentModal">
+                        <i class="bi bi-paperclip"></i> Attach Document
+                    </button>
+                </div>
+
+                @if (taskDocuments == null)
+                {
+                    <p><em>Loading documents...</em></p>
+                }
+                else if (!taskDocuments.Any())
+                {
+                    <div class="alert alert-info">No documents attached to this task.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Category</th>
+                                    <th>Uploaded</th>
+                                    <th>Size</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var doc in taskDocuments)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@doc.Title</strong>
+                                            @if (!string.IsNullOrEmpty(doc.Description))
+                                            {
+                                                <br /><small class="text-muted">@doc.Description</small>
+                                            }
+                                        </td>
+                                        <td><span class="badge bg-info">@doc.Category</span></td>
+                                        <td>@doc.UploadedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                        <td>@FormatFileSize(doc.FileSizeBytes)</td>
+                                        <td>
+                                            <a href="/documents/download/@doc.DocumentId" class="btn btn-sm btn-outline-primary" title="Download">
+                                                <i class="bi bi-download"></i>
+                                            </a>
+                                            @if (IsPdfOrImage(doc.FileType))
+                                            {
+                                                <a href="/documents/preview/@doc.DocumentId" target="_blank" class="btn btn-sm btn-outline-secondary" title="Preview">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
 </div>
+
+<UploadDocumentModal IsVisible="showAttachDocumentModal"
+                     UserId="currentUserId"
+                     PresetProjectId="@(selectedTask?.ProjectId)"
+                     TaskId="@(selectedTask?.TaskId)"
+                     OnUploadComplete="HandleDocumentAttached"
+                     OnClose="CloseAttachDocumentModal" />
 
 @code {
     private List<TaskItem>? tasks;
+    private TaskItem? selectedTask;
+    private List<Document>? taskDocuments;
+    private bool showAttachDocumentModal = false;
     private string filterStatus = "";
     private string filterPriority = "";
     private int currentUserId = 0;
@@ -185,9 +298,71 @@
         // TODO: Implement modal dialog for creating tasks
     }
 
-    private void ViewTaskDetails(int taskId)
+    private async Task ViewTaskDetails(int taskId)
     {
-        // TODO: Navigate to task details or show modal
+        selectedTask = await TaskService.GetTaskByIdAsync(taskId, currentUserId);
+        if (selectedTask != null)
+        {
+            taskDocuments = await DocumentService.GetTaskDocumentsAsync(taskId, currentUserId);
+        }
+    }
+
+    private void CloseTaskDetails()
+    {
+        selectedTask = null;
+        taskDocuments = null;
+    }
+
+    private void ShowAttachDocumentModal()
+    {
+        showAttachDocumentModal = true;
+    }
+
+    private void CloseAttachDocumentModal()
+    {
+        showAttachDocumentModal = false;
+    }
+
+    private async Task HandleDocumentAttached()
+    {
+        showAttachDocumentModal = false;
+        
+        // Reload task documents to show the newly attached document
+        if (selectedTask != null)
+        {
+            taskDocuments = await DocumentService.GetTaskDocumentsAsync(selectedTask.TaskId, currentUserId);
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private bool IsPdfOrImage(string fileType)
+    {
+        var lower = fileType.ToLowerInvariant();
+        return lower.Contains("pdf") || lower.Contains("image") || 
+               lower.Contains("png") || lower.Contains("jpg") || lower.Contains("jpeg");
+    }
+
+    private string GetStatusColor(Models.TaskStatus status)
+    {
+        return status switch
+        {
+            Models.TaskStatus.Completed => "success",
+            Models.TaskStatus.InProgress => "primary",
+            Models.TaskStatus.NotStarted => "secondary",
+            _ => "secondary"
+        };
     }
 
     private string GetPriorityColor(TaskPriority priority)

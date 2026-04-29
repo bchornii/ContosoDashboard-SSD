@@ -6,6 +6,7 @@
 @attribute [Authorize]
 @inject INotificationService NotificationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NotificationStateService NotificationState
 
 <PageTitle>Notifications - ContosoDashboard</PageTitle>
 
@@ -111,6 +112,7 @@
         {
             await NotificationService.MarkAsReadAsync(notificationId, currentUserId);
             await LoadNotifications();
+            await NotificationState.NotifyCountChangedAsync();
         }
     }
 
@@ -123,6 +125,7 @@
                 await NotificationService.MarkAsReadAsync(notification.NotificationId, currentUserId);
             }
             await LoadNotifications();
+            await NotificationState.NotifyCountChangedAsync();
         }
     }
 

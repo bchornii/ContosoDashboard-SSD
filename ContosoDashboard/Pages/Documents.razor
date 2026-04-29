@@ -5,7 +5,9 @@
 @using System.Security.Claims
 @attribute [Authorize]
 @inject IDocumentService DocumentService
+@inject IUserService UserService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@implements IDisposable
 
 <PageTitle>Documents - ContosoDashboard</PageTitle>
 
@@ -21,22 +23,60 @@
         </div>
     </div>
 
+    <!-- Search Bar -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" 
+                       class="form-control" 
+                       placeholder="Search documents by title, description, tags, uploader, or project..." 
+                       @bind="searchTerm" 
+                       @bind:event="oninput"
+                       @bind:after="OnSearchInput" />
+                @if (!string.IsNullOrEmpty(searchTerm))
+                {
+                    <button class="btn btn-outline-secondary" @onclick="ClearSearch" title="Clear search">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                }
+            </div>
+            @if (isSearchActive)
+            {
+                <small class="text-muted">
+                    <i class="bi bi-funnel"></i> Showing search results for "@searchTerm"
+                </small>
+            }
+        </div>
+    </div>
+
     <!-- Tabs -->
-    <ul class="nav nav-tabs mb-3">
-        <li class="nav-item">
-            <a class="nav-link @(activeTab == "my" ? "active" : "")" href="#" @onclick='() => SwitchTab("my")' @onclick:preventDefault>
-                <i class="bi bi-file-earmark-text"></i> My Documents
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link @(activeTab == "shared" ? "active" : "")" href="#" @onclick='() => SwitchTab("shared")' @onclick:preventDefault>
-                <i class="bi bi-share"></i> Shared with Me
-            </a>
-        </li>
-    </ul>
+    @if (!isSearchActive)
+    {
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "my" ? "active" : "")" href="#" @onclick='() => SwitchTab("my")' @onclick:preventDefault>
+                    <i class="bi bi-file-earmark-text"></i> My Documents
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "shared" ? "active" : "")" href="#" @onclick='() => SwitchTab("shared")' @onclick:preventDefault>
+                    <i class="bi bi-share"></i> Shared with Me
+                </a>
+            </li>
+            @if (isAdministrator)
+            {
+                <li class="nav-item">
+                    <a class="nav-link @(activeTab == "activityLog" ? "active" : "")" href="#" @onclick='() => SwitchTab("activityLog")' @onclick:preventDefault>
+                        <i class="bi bi-clock-history"></i> Activity Log
+                    </a>
+                </li>
+            }
+        </ul>
+    }
 
     <!-- Filter/Sort Controls -->
-    @if (activeTab == "my")
+    @if (activeTab == "my" && !isSearchActive)
     {
         <div class="row mb-3">
             <div class="col-md-3">
@@ -63,108 +103,198 @@
         </div>
     }
 
-    @if (documents == null)
+    <!-- Unscanned Documents Section (Admin Only) -->
+    @if (isAdministrator && activeTab == "my" && !isSearchActive && unscannedCount > 0)
     {
-        <p><em>Loading...</em></p>
-    }
-    else if (!documents.Any())
-    {
-        <div class="alert alert-info">
-            <i class="bi bi-info-circle"></i> No documents @(activeTab == "shared" ? "shared with you" : "yet. Upload your first document to get started").
+        <div class="alert alert-warning mb-3">
+            <i class="bi bi-exclamation-triangle"></i>
+            <strong>@unscannedCount unscanned document(s)</strong> pending virus scan review.
+            <button class="btn btn-sm btn-outline-warning ms-2" @onclick='() => SwitchTab("activityLog")'>View Activity Log</button>
         </div>
     }
-    else
+
+    <!-- Documents Table (My Documents and Shared tabs) -->
+    @if (activeTab != "activityLog")
     {
-        <div class="card">
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Title</th>
-                                <th>Category</th>
-                                <th>File Type</th>
-                                <th>Size</th>
-                                <th>Uploaded</th>
-                                @if (activeTab == "shared")
-                                {
-                                    <th>Shared By</th>
-                                }
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var doc in documents)
-                            {
+        @if (documents == null)
+        {
+            <p><em>Loading...</em></p>
+        }
+        else if (!documents.Any())
+        {
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> 
+                @if (isSearchActive)
+                {
+                    <text>No documents found matching "@searchTerm".</text>
+                }
+                else
+                {
+                    <text>No documents @(activeTab == "shared" ? "shared with you" : "yet. Upload your first document to get started").</text>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
                                 <tr>
-                                    <td>
-                                        <strong>@doc.Title</strong>
-                                        @if (!string.IsNullOrEmpty(doc.Description))
-                                        {
-                                            <br />
-                                            <small class="text-muted">@doc.Description</small>
-                                        }
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-secondary">@doc.Category</span>
-                                    </td>
-                                    <td>
-                                        <small class="text-muted">@Path.GetExtension(doc.OriginalFileName)</small>
-                                    </td>
-                                    <td>
-                                        <small>@FormatFileSize(doc.FileSizeBytes)</small>
-                                    </td>
-                                    <td>
-                                        <small class="text-muted">@doc.UploadedAt.ToString("MMM dd, yyyy")</small>
-                                    </td>
+                                    <th>Title</th>
+                                    <th>Category</th>
+                                    <th>File Type</th>
+                                    <th>Size</th>
+                                    <th>Uploaded</th>
                                     @if (activeTab == "shared")
                                     {
-                                        <td>
-                                            <small>@(doc.UploadedByUser?.DisplayName ?? "Unknown")</small>
-                                        </td>
+                                        <th>Shared By</th>
                                     }
-                                    <td>
-                                        @if (doc.ScanStatus == "Clean")
-                                        {
-                                            <span class="badge bg-success">
-                                                <i class="bi bi-shield-check"></i> Clean
-                                            </span>
-                                        }
-                                        else if (doc.ScanStatus == "UnscannedPendingReview")
-                                        {
-                                            <span class="badge bg-warning text-dark">
-                                                <i class="bi bi-hourglass-split"></i> Pending Scan
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-secondary">@doc.ScanStatus</span>
-                                        }
-                                    </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm" role="group">
-                                            <a href="/documents/download/@doc.DocumentId" class="btn btn-outline-primary" title="Download">
-                                                <i class="bi bi-download"></i>
-                                            </a>
-                                            @{
-                                                var isPdfOrImage = doc.FileType.Contains("pdf") || doc.FileType.Contains("image");
-                                            }
-                                            @if (isPdfOrImage)
-                                            {
-                                                <a href="/documents/preview/@doc.DocumentId" class="btn btn-outline-info" target="_blank" title="Preview">
-                                                    <i class="bi bi-eye"></i>
-                                                </a>
-                                            }
-                                        </div>
-                                    </td>
+                                    <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach (var doc in documents)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@doc.Title</strong>
+                                            @if (!string.IsNullOrEmpty(doc.Description))
+                                            {
+                                                <br />
+                                                <small class="text-muted">@doc.Description</small>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">@doc.Category</span>
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">@Path.GetExtension(doc.OriginalFileName)</small>
+                                        </td>
+                                        <td>
+                                            <small>@FormatFileSize(doc.FileSizeBytes)</small>
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">@doc.UploadedAt.ToString("MMM dd, yyyy")</small>
+                                        </td>
+                                        @if (activeTab == "shared")
+                                        {
+                                            <td>
+                                                <small>@(doc.UploadedByUser?.DisplayName ?? "Unknown")</small>
+                                            </td>
+                                        }
+                                        <td>
+                                            @if (doc.ScanStatus == "Clean")
+                                            {
+                                                <span class="badge bg-success">
+                                                    <i class="bi bi-shield-check"></i> Clean
+                                                </span>
+                                            }
+                                            else if (doc.ScanStatus == "UnscannedPendingReview")
+                                            {
+                                                <span class="badge bg-warning text-dark">
+                                                    <i class="bi bi-hourglass-split"></i> Pending Scan
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">@doc.ScanStatus</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                @if (activeTab == "my" || doc.UploadedByUserId == currentUserId)
+                                                {
+                                                    <button class="btn btn-outline-secondary" @onclick='() => ShowEditModal(doc)' title="Edit">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button class="btn btn-outline-success" @onclick='() => ShowShareModal(doc)' title="Share">
+                                                        <i class="bi bi-share"></i>
+                                                    </button>
+                                                }
+                                                <a href="/documents/download/@doc.DocumentId" class="btn btn-outline-primary" title="Download">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                                @{
+                                                    var isPdfOrImage = doc.FileType.Contains("pdf") || doc.FileType.Contains("image");
+                                                }
+                                                @if (isPdfOrImage)
+                                                {
+                                                    <a href="/documents/preview/@doc.DocumentId" class="btn btn-outline-info" target="_blank" title="Preview">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-        </div>
+        }
+    }
+
+    <!-- Activity Log Table (Admin Only) -->
+    @if (activeTab == "activityLog")
+    {
+        @if (activityLogs == null)
+        {
+            <p><em>Loading activity logs...</em></p>
+        }
+        else if (!activityLogs.Any())
+        {
+            <div class="alert alert-info">No activity logs found.</div>
+        }
+        else
+        {
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Document</th>
+                                    <th>Actor</th>
+                                    <th>Action</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var log in activityLogs)
+                                {
+                                    <tr>
+                                        <td>
+                                            <small class="text-muted">@log.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss")</small>
+                                        </td>
+                                        <td>
+                                            <strong>@(log.Document?.Title ?? "N/A")</strong>
+                                        </td>
+                                        <td>
+                                            <small>@(log.ActorUser?.DisplayName ?? "System")</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-@GetActionColor(log.Action)">@log.Action</span>
+                                        </td>
+                                        <td>
+                                            <small>@(log.Details ?? "-")</small>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (activityLogs.Count >= 100)
+                    {
+                        <p class="text-muted text-center mt-2">Showing last 100 entries</p>
+                    }
+                </div>
+            </div>
+        }
     }
 </div>
 
@@ -173,13 +303,34 @@
                      OnUploadComplete="HandleUploadComplete" 
                      OnClose="() => showUploadModal = false" />
 
+<EditDocumentModal IsVisible="showEditModal"
+                   Document="selectedDocument"
+                   UserId="currentUserId"
+                   OnEditComplete="HandleEditComplete"
+                   OnClose="() => showEditModal = false" />
+
+<ShareDocumentModal IsVisible="showShareModal"
+                    Document="selectedDocument"
+                    UserId="currentUserId"
+                    OnShareComplete="HandleShareComplete"
+                    OnClose="() => showShareModal = false" />
+
 @code {
     private List<Document>? documents;
+    private List<DocumentActivityLog>? activityLogs;
     private int currentUserId;
+    private bool isAdministrator = false;
+    private int unscannedCount = 0;
     private bool showUploadModal = false;
+    private bool showEditModal = false;
+    private bool showShareModal = false;
+    private Document? selectedDocument = null;
     private string activeTab = "my";
     private string filterCategory = "";
     private string sortField = "uploadDate";
+    private string searchTerm = "";
+    private bool isSearchActive = false;
+    private System.Threading.Timer? searchDebounceTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -193,12 +344,64 @@
 
         if (currentUserId > 0)
         {
+            // Check if user is administrator
+            var currentUser = await UserService.GetUserByIdAsync(currentUserId);
+            isAdministrator = currentUser?.Role == UserRole.Administrator;
+
+            // Load unscanned count for administrators
+            if (isAdministrator)
+            {
+                var unscannedDocs = await DocumentService.GetUnscannedDocumentsAsync(currentUserId, 0, 999);
+                unscannedCount = unscannedDocs.Count;
+            }
+
             await LoadDocuments();
         }
     }
 
+    private void OnSearchInput()
+    {
+        // Debounce: wait 500ms after user stops typing
+        searchDebounceTimer?.Dispose();
+        searchDebounceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await PerformSearch();
+                StateHasChanged();
+            });
+        }, null, 500, Timeout.Infinite);
+    }
+
+    private async Task PerformSearch()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            isSearchActive = false;
+            await LoadDocuments();
+        }
+        else
+        {
+            isSearchActive = true;
+            documents = await DocumentService.SearchDocumentsAsync(currentUserId, searchTerm);
+        }
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = "";
+        isSearchActive = false;
+        await LoadDocuments();
+    }
+
     private async Task LoadDocuments()
     {
+        if (isSearchActive)
+        {
+            await PerformSearch();
+            return;
+        }
+
         if (activeTab == "my")
         {
             var filter = new DocumentFilter
@@ -213,11 +416,17 @@
         {
             documents = await DocumentService.GetSharedWithMeAsync(currentUserId);
         }
+        else if (activeTab == "activityLog")
+        {
+            activityLogs = await DocumentService.GetActivityLogAsync(currentUserId, 0, 100);
+        }
     }
 
     private async Task SwitchTab(string tab)
     {
         activeTab = tab;
+        searchTerm = "";
+        isSearchActive = false;
         await LoadDocuments();
     }
 
@@ -244,9 +453,35 @@
         showUploadModal = true;
     }
 
+    private void ShowEditModal(Document document)
+    {
+        selectedDocument = document;
+        showEditModal = true;
+    }
+
+    private void ShowShareModal(Document document)
+    {
+        selectedDocument = document;
+        showShareModal = true;
+    }
+
     private async Task HandleUploadComplete()
     {
         showUploadModal = false;
+        await LoadDocuments();
+    }
+
+    private async Task HandleEditComplete()
+    {
+        showEditModal = false;
+        selectedDocument = null;
+        await LoadDocuments();
+    }
+
+    private async Task HandleShareComplete()
+    {
+        showShareModal = false;
+        selectedDocument = null;
         await LoadDocuments();
     }
 
@@ -261,6 +496,26 @@
             len = len / 1024;
         }
         return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string GetActionColor(string action)
+    {
+        return action switch
+        {
+            "Upload" => "primary",
+            "Download" => "info",
+            "Edit" or "EditMetadata" or "ReplaceFile" => "warning",
+            "Delete" => "danger",
+            "Share" => "success",
+            "AttachToTask" => "secondary",
+            "DetachFromTask" => "secondary",
+            _ => "secondary"
+        };
+    }
+
+    public void Dispose()
+    {
+        searchDebounceTimer?.Dispose();
     }
 }
 

@@ -62,16 +62,22 @@ namespace ContosoDashboard.Services
         Task<DocumentDownloadResult> DownloadDocumentAsync(int documentId, int requestingUserId);
         Task<DocumentDownloadResult> GetPreviewAsync(int documentId, int requestingUserId);
         Task<bool> UpdateDocumentMetadataAsync(int documentId, int requestingUserId, DocumentMetadataUpdate update);
+        Task<bool> ReplaceDocumentFileAsync(int documentId, int requestingUserId, IBrowserFile newFile);
         Task<bool> DeleteDocumentAsync(int documentId, int requestingUserId);
         Task<bool> ShareDocumentAsync(int documentId, int sharedByUserId, int sharedWithUserId);
+        Task<bool> ShareDocumentWithProjectAsync(int documentId, int projectId, int sharedByUserId);
         Task<bool> RemoveShareAsync(int documentId, int removedByUserId, int sharedWithUserId);
         Task<List<DocumentShare>> GetDocumentSharesAsync(int documentId, int requestingUserId);
         Task<List<Document>> GetSharedWithMeAsync(int userId);
+        Task<List<Document>> SearchDocumentsAsync(int userId, string searchTerm);
         Task<bool> AttachToTaskAsync(int documentId, int taskId, int attachedByUserId);
         Task<bool> DetachFromTaskAsync(int documentId, int taskId, int requestingUserId);
         Task<List<Document>> GetTaskDocumentsAsync(int taskId, int requestingUserId);
+        Task<int> GetDocumentCountAsync(int userId);
         Task<List<Document>> GetRecentDocumentsAsync(int userId, int count = 5);
         Task<List<Document>> GetAllDocumentsAsync();
+        Task<List<Document>> GetUnscannedDocumentsAsync(int requestingUserId, int skip = 0, int take = 50);
+        Task<List<DocumentActivityLog>> GetActivityLogAsync(int requestingUserId, int skip = 0, int take = 100);
         Task<bool> UpdateScanStatusAsync(int documentId, string scanStatus);
     }
 
@@ -264,34 +270,168 @@ namespace ContosoDashboard.Services
 
         public async Task<bool> UpdateDocumentMetadataAsync(int documentId, int requestingUserId, DocumentMetadataUpdate update)
         {
-            var doc = await _db.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId && !d.IsDeleted);
-            if (doc == null || doc.UploadedByUserId != requestingUserId) return false;
+            var doc = await _db.Documents
+                .Include(d => d.UploadedByUser)
+                .FirstOrDefaultAsync(d => d.DocumentId == documentId && !d.IsDeleted);
+            if (doc == null) return false;
+
+            // Authorize: owner or admin
+            if (doc.UploadedByUserId != requestingUserId && doc.UploadedByUser.Role != UserRole.Administrator)
+            {
+                var requestingUser = await _db.Users.FirstOrDefaultAsync(u => u.UserId == requestingUserId);
+                if (requestingUser?.Role != UserRole.Administrator) return false;
+            }
 
             doc.Title = update.Title;
             doc.Description = update.Description;
             doc.Category = update.Category;
             doc.Tags = update.Tags;
 
-            await LogActivityAsync(documentId, requestingUserId, "Edit", "Metadata updated");
+            await LogActivityAsync(documentId, requestingUserId, "EditMetadata", "Metadata updated");
+            await _db.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> ReplaceDocumentFileAsync(int documentId, int requestingUserId, IBrowserFile newFile)
+        {
+            var doc = await _db.Documents
+                .Include(d => d.UploadedByUser)
+                .FirstOrDefaultAsync(d => d.DocumentId == documentId && !d.IsDeleted);
+            if (doc == null) return false;
+
+            // Authorize: owner or admin
+            if (doc.UploadedByUserId != requestingUserId)
+            {
+                var requestingUser = await _db.Users.FirstOrDefaultAsync(u => u.UserId == requestingUserId);
+                if (requestingUser?.Role != UserRole.Administrator) return false;
+            }
+
+            // Validate new file
+            var extension = Path.GetExtension(newFile.Name).ToLowerInvariant();
+            if (!AllowedExtensions.Contains(extension))
+            {
+                _logger.LogWarning("File type {Extension} not allowed for document replacement", extension);
+                return false;
+            }
+
+            if (newFile.Size > MaxFileSizeBytes)
+            {
+                _logger.LogWarning("File size {Size} exceeds maximum {MaxSize} for document replacement", newFile.Size, MaxFileSizeBytes);
+                return false;
+            }
+
+            // Delete old file
+            try
+            {
+                await _fileStorage.DeleteFileAsync(doc.StoredFilePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete old file at {Path}, continuing with replacement", doc.StoredFilePath);
+            }
+
+            // Save new file
+            var newStoredPath = await _fileStorage.SaveFileAsync(newFile, doc.UploadedByUserId, doc.ProjectId);
+
+            // Scan new file
+            var scanResult = await _virusScanService.ScanFileAsync(newStoredPath);
+            if (scanResult == ScanResult.Malicious)
+            {
+                _logger.LogWarning("Malicious file detected during replacement for document {DocumentId}, deleting", documentId);
+                await _fileStorage.DeleteFileAsync(newStoredPath);
+                return false;
+            }
+
+            // Update document entity
+            doc.StoredFilePath = newStoredPath;
+            doc.FileSizeBytes = newFile.Size;
+            doc.OriginalFileName = newFile.Name;
+            doc.FileType = newFile.ContentType;
+            doc.ScanStatus = scanResult == ScanResult.Clean ? "Clean" : "UnscannedPendingReview";
+
+            await LogActivityAsync(documentId, requestingUserId, "ReplaceFile", $"File replaced with {newFile.Name}");
             await _db.SaveChangesAsync();
             return true;
         }
 
         public async Task<bool> DeleteDocumentAsync(int documentId, int requestingUserId)
         {
-            var doc = await _db.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId && !d.IsDeleted);
-            if (doc == null || doc.UploadedByUserId != requestingUserId) return false;
+            var doc = await _db.Documents
+                .Include(d => d.UploadedByUser)
+                .Include(d => d.Project)
+                    .ThenInclude(p => p!.ProjectMembers)
+                .FirstOrDefaultAsync(d => d.DocumentId == documentId && !d.IsDeleted);
+            if (doc == null) return false;
 
+            // Authorize: owner OR ProjectManager (for project docs) OR admin
+            bool isOwner = doc.UploadedByUserId == requestingUserId;
+            var requestingUser = await _db.Users.FirstOrDefaultAsync(u => u.UserId == requestingUserId);
+            bool isAdmin = requestingUser?.Role == UserRole.Administrator;
+            bool isProjectManager = false;
+
+            if (doc.ProjectId.HasValue && requestingUser != null)
+            {
+                isProjectManager = requestingUser.Role == UserRole.ProjectManager &&
+                    doc.Project!.ProjectMembers.Any(pm => pm.UserId == requestingUserId);
+            }
+
+            if (!isOwner && !isProjectManager && !isAdmin) return false;
+
+            // Soft delete
             doc.IsDeleted = true;
-            await LogActivityAsync(documentId, requestingUserId, "Delete");
+
+            // Get all shares and notify users
+            var shares = await _db.DocumentShares
+                .Where(s => s.DocumentId == documentId)
+                .ToListAsync();
+
+            foreach (var share in shares)
+            {
+                await _notificationService.CreateNotificationAsync(new Notification
+                {
+                    UserId = share.SharedWithUserId,
+                    Title = "Document Removed",
+                    Message = $"The document \"{doc.Title}\" has been deleted and is no longer shared with you.",
+                    Type = NotificationType.DocumentRemovedFromShare,
+                    Priority = NotificationPriority.Informational,
+                    IsRead = false,
+                    CreatedDate = DateTime.UtcNow
+                });
+            }
+
+            // Remove all shares
+            _db.DocumentShares.RemoveRange(shares);
+
+            // Optional: Delete physical file (commented out to preserve files for audit/recovery)
+            // try
+            // {
+            //     await _fileStorage.DeleteFileAsync(doc.StoredFilePath);
+            // }
+            // catch (Exception ex)
+            // {
+            //     _logger.LogWarning(ex, "Failed to delete physical file at {Path}", doc.StoredFilePath);
+            // }
+
+            await LogActivityAsync(documentId, requestingUserId, "Delete", $"Document deleted by {requestingUser?.DisplayName}");
             await _db.SaveChangesAsync();
             return true;
         }
 
         public async Task<bool> ShareDocumentAsync(int documentId, int sharedByUserId, int sharedWithUserId)
         {
-            var doc = await _db.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId && !d.IsDeleted);
-            if (doc == null || doc.UploadedByUserId != sharedByUserId) return false;
+            var doc = await _db.Documents
+                .Include(d => d.Project)
+                    .ThenInclude(p => p!.ProjectMembers)
+                .Include(d => d.UploadedByUser)
+                .FirstOrDefaultAsync(d => d.DocumentId == documentId && !d.IsDeleted);
+            if (doc == null) return false;
+
+            // Authorize: owner or admin
+            if (doc.UploadedByUserId != sharedByUserId)
+            {
+                var requestingUser = await _db.Users.FirstOrDefaultAsync(u => u.UserId == sharedByUserId);
+                if (requestingUser?.Role != UserRole.Administrator) return false;
+            }
 
             bool alreadyShared = await _db.DocumentShares.AnyAsync(s =>
                 s.DocumentId == documentId && s.SharedWithUserId == sharedWithUserId);
@@ -308,16 +448,81 @@ namespace ContosoDashboard.Services
             await LogActivityAsync(documentId, sharedByUserId, "Share", $"Shared with user {sharedWithUserId}");
             await _db.SaveChangesAsync();
 
+            // Send notification to the user receiving the share
             await _notificationService.CreateNotificationAsync(new Notification
             {
                 UserId = sharedWithUserId,
                 Title = "Document shared with you",
-                Message = $"'{doc.Title}' has been shared with you.",
+                Message = $"'{doc.Title}' has been shared with you by {doc.UploadedByUser.DisplayName}.",
                 Type = NotificationType.DocumentShared,
                 Priority = NotificationPriority.Informational
             });
 
+            // If project-associated document, notify other project members
+            if (doc.ProjectId.HasValue && doc.Project != null)
+            {
+                var otherProjectMembers = doc.Project.ProjectMembers
+                    .Where(pm => pm.UserId != doc.UploadedByUserId && pm.UserId != sharedWithUserId)
+                    .ToList();
+
+                foreach (var member in otherProjectMembers)
+                {
+                    // Check if not already shared
+                    bool memberAlreadyHasAccess = await _db.DocumentShares.AnyAsync(s =>
+                        s.DocumentId == documentId && s.SharedWithUserId == member.UserId);
+                    
+                    if (!memberAlreadyHasAccess)
+                    {
+                        await _notificationService.CreateNotificationAsync(new Notification
+                        {
+                            UserId = member.UserId,
+                            Title = "Document added to project",
+                            Message = $"'{doc.Title}' has been added to the project '{doc.Project.Name}'.",
+                            Type = NotificationType.DocumentAddedToProject,
+                            Priority = NotificationPriority.Informational
+                        });
+                    }
+                }
+            }
+
             return true;
+        }
+
+        public async Task<bool> ShareDocumentWithProjectAsync(int documentId, int projectId, int sharedByUserId)
+        {
+            var doc = await _db.Documents
+                .Include(d => d.UploadedByUser)
+                .FirstOrDefaultAsync(d => d.DocumentId == documentId && !d.IsDeleted);
+            if (doc == null) return false;
+
+            // Authorize: owner or admin
+            if (doc.UploadedByUserId != sharedByUserId)
+            {
+                var requestingUser = await _db.Users.FirstOrDefaultAsync(u => u.UserId == sharedByUserId);
+                if (requestingUser?.Role != UserRole.Administrator) return false;
+            }
+
+            // Get all project members except the document owner
+            var projectMembers = await _db.ProjectMembers
+                .Where(pm => pm.ProjectId == projectId && pm.UserId != doc.UploadedByUserId)
+                .ToListAsync();
+
+            int sharedCount = 0;
+            foreach (var member in projectMembers)
+            {
+                // Check if not already shared
+                bool alreadyShared = await _db.DocumentShares.AnyAsync(s =>
+                    s.DocumentId == documentId && s.SharedWithUserId == member.UserId);
+                
+                if (!alreadyShared)
+                {
+                    var success = await ShareDocumentAsync(documentId, sharedByUserId, member.UserId);
+                    if (success) sharedCount++;
+                }
+            }
+
+            _logger.LogInformation("Shared document {DocumentId} with {Count} project members", documentId, sharedCount);
+            return sharedCount > 0;
         }
 
         public async Task<bool> RemoveShareAsync(int documentId, int removedByUserId, int sharedWithUserId)
@@ -361,9 +566,56 @@ namespace ContosoDashboard.Services
         {
             return await _db.DocumentShares
                 .Where(s => s.SharedWithUserId == userId)
+                .Include(s => s.Document)
+                    .ThenInclude(d => d.UploadedByUser)
+                .Where(s => !s.Document.IsDeleted)
                 .Select(s => s.Document)
-                .Where(d => !d.IsDeleted)
+                .OrderByDescending(d => d.UploadedAt)
+                .ToListAsync();
+        }
+
+        public async Task<List<Document>> SearchDocumentsAsync(int userId, string searchTerm)
+        {
+            if (string.IsNullOrWhiteSpace(searchTerm))
+                return new List<Document>();
+
+            var user = await _db.Users.Include(u => u.ProjectMemberships).FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null) return new List<Document>();
+
+            var pattern = $"%{searchTerm}%";
+
+            // Build base query for accessible documents
+            var query = _db.Documents
                 .Include(d => d.UploadedByUser)
+                .Include(d => d.Project)
+                .Where(d => !d.IsDeleted);
+
+            // Apply IDOR: own docs + shared + project membership + admin
+            if (user.Role != UserRole.Administrator)
+            {
+                var projectIds = user.ProjectMemberships.Select(pm => pm.ProjectId).ToList();
+                var sharedDocIds = _db.DocumentShares
+                    .Where(s => s.SharedWithUserId == userId)
+                    .Select(s => s.DocumentId)
+                    .ToList();
+
+                query = query.Where(d =>
+                    d.UploadedByUserId == userId ||
+                    sharedDocIds.Contains(d.DocumentId) ||
+                    (d.ProjectId.HasValue && projectIds.Contains(d.ProjectId.Value))
+                );
+            }
+
+            // Search across multiple fields
+            query = query.Where(d =>
+                EF.Functions.Like(d.Title, pattern) ||
+                (d.Description != null && EF.Functions.Like(d.Description, pattern)) ||
+                (d.Tags != null && EF.Functions.Like(d.Tags, pattern)) ||
+                EF.Functions.Like(d.UploadedByUser.DisplayName, pattern) ||
+                (d.Project != null && EF.Functions.Like(d.Project.Name, pattern))
+            );
+
+            return await query
                 .OrderByDescending(d => d.UploadedAt)
                 .ToListAsync();
         }
@@ -407,11 +659,58 @@ namespace ContosoDashboard.Services
 
         public async Task<List<Document>> GetTaskDocumentsAsync(int taskId, int requestingUserId)
         {
+            // Get the task with project info to check authorization
+            var task = await _db.Tasks
+                .Include(t => t.Project)
+                    .ThenInclude(p => p!.ProjectMembers)
+                .FirstOrDefaultAsync(t => t.TaskId == taskId);
+            
+            if (task == null) return new List<Document>();
+
+            var requestingUser = await _db.Users.FirstOrDefaultAsync(u => u.UserId == requestingUserId);
+            if (requestingUser == null) return new List<Document>();
+
+            // Authorize: task assignee OR project member OR admin
+            bool isAssignee = task.AssignedUserId == requestingUserId;
+            bool isProjectMember = task.ProjectId.HasValue && 
+                task.Project!.ProjectMembers.Any(pm => pm.UserId == requestingUserId);
+            bool isAdmin = requestingUser.Role == UserRole.Administrator;
+
+            if (!isAssignee && !isProjectMember && !isAdmin)
+                return new List<Document>();
+
             return await _db.TaskDocuments
                 .Where(td => td.TaskId == taskId)
                 .Select(td => td.Document)
                 .Where(d => !d.IsDeleted)
+                .Include(d => d.UploadedByUser)
+                .OrderByDescending(d => d.UploadedAt)
                 .ToListAsync();
+        }
+
+        public async Task<int> GetDocumentCountAsync(int userId)
+        {
+            var user = await _db.Users.Include(u => u.ProjectMemberships).FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null) return 0;
+
+            if (user.Role == UserRole.Administrator)
+            {
+                return await _db.Documents.CountAsync(d => !d.IsDeleted);
+            }
+
+            var projectIds = user.ProjectMemberships.Select(pm => pm.ProjectId).ToList();
+            var sharedDocIds = await _db.DocumentShares
+                .Where(s => s.SharedWithUserId == userId)
+                .Select(s => s.DocumentId)
+                .ToListAsync();
+
+            return await _db.Documents
+                .Where(d => !d.IsDeleted && (
+                    d.UploadedByUserId == userId ||
+                    sharedDocIds.Contains(d.DocumentId) ||
+                    (d.ProjectId.HasValue && projectIds.Contains(d.ProjectId.Value))
+                ))
+                .CountAsync();
         }
 
         public async Task<List<Document>> GetRecentDocumentsAsync(int userId, int count = 5)
@@ -432,6 +731,39 @@ namespace ContosoDashboard.Services
                 .Include(d => d.UploadedByUser)
                 .Include(d => d.Project)
                 .OrderByDescending(d => d.UploadedAt)
+                .ToListAsync();
+        }
+
+        public async Task<List<Document>> GetUnscannedDocumentsAsync(int requestingUserId, int skip = 0, int take = 50)
+        {
+            // Verify admin access
+            var user = await _db.Users.FindAsync(requestingUserId);
+            if (user == null || user.Role != UserRole.Administrator)
+                return new List<Document>();
+
+            return await _db.Documents
+                .Where(d => !d.IsDeleted && d.ScanStatus != "Clean")
+                .Include(d => d.UploadedByUser)
+                .Include(d => d.Project)
+                .OrderByDescending(d => d.UploadedAt)
+                .Skip(skip)
+                .Take(take)
+                .ToListAsync();
+        }
+
+        public async Task<List<DocumentActivityLog>> GetActivityLogAsync(int requestingUserId, int skip = 0, int take = 100)
+        {
+            // Verify admin access
+            var user = await _db.Users.FindAsync(requestingUserId);
+            if (user == null || user.Role != UserRole.Administrator)
+                return new List<DocumentActivityLog>();
+
+            return await _db.DocumentActivityLogs
+                .Include(log => log.Document)
+                .Include(log => log.ActorUser)
+                .OrderByDescending(log => log.OccurredAt)
+                .Skip(skip)
+                .Take(take)
                 .ToListAsync();
         }
 

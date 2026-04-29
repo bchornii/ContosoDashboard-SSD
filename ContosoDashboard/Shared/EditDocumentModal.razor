@@ -1,0 +1,284 @@
+@using ContosoDashboard.Services
+@using ContosoDashboard.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDocumentService DocumentService
+
+<div class="modal @(IsVisible ? "show d-block" : "")" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-pencil-square"></i> Edit Document
+                </h5>
+                <button type="button" class="btn-close" @onclick="OnClose"></button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger alert-dismissible fade show">
+                        <i class="bi bi-exclamation-triangle"></i> @errorMessage
+                        <button type="button" class="btn-close" @onclick='() => errorMessage = null'></button>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(successMessage))
+                {
+                    <div class="alert alert-success alert-dismissible fade show">
+                        <i class="bi bi-check-circle"></i> @successMessage
+                        <button type="button" class="btn-close" @onclick='() => successMessage = null'></button>
+                    </div>
+                }
+
+                @if (Document != null)
+                {
+                    <!-- Metadata Section -->
+                    <div class="mb-4">
+                        <h6 class="border-bottom pb-2">Document Metadata</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Title <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="editTitle" required />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Category <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="editCategory" required>
+                                <option value="Report">Report</option>
+                                <option value="Specification">Specification</option>
+                                <option value="Presentation">Presentation</option>
+                                <option value="Image">Image</option>
+                                <option value="Spreadsheet">Spreadsheet</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" rows="3" @bind="editDescription"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Tags <small class="text-muted">(comma-separated)</small></label>
+                            <input type="text" class="form-control" @bind="editTags" placeholder="e.g., urgent, Q1-2024, planning" />
+                        </div>
+                        <button class="btn btn-primary" @onclick="SaveMetadata" disabled="@isSaving">
+                            @if (isSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            <i class="bi bi-save"></i> Save Metadata
+                        </button>
+                    </div>
+
+                    <!-- Replace File Section -->
+                    <div class="mb-4">
+                        <h6 class="border-bottom pb-2">Replace File</h6>
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> <strong>Warning:</strong> Replacing the file will permanently delete the old file. This action cannot be undone.
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Current File</label>
+                            <div class="text-muted">@Document.OriginalFileName (@FormatFileSize(Document.FileSizeBytes))</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">New File</label>
+                            <InputFile class="form-control" 
+                                       @key="@fileInputKey"
+                                       OnChange="OnReplaceFileSelected" 
+                                       accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.zip" />
+                            <small class="form-text text-muted">Maximum file size: 25 MB</small>
+                        </div>
+                        @if (replaceFile != null)
+                        {
+                            <div class="mb-3">
+                                <strong>Selected:</strong> @replaceFile.Name (@FormatFileSize(replaceFile.Size))
+                            </div>
+                            <button class="btn btn-warning" @onclick="ReplaceFile" disabled="@isReplacing">
+                                @if (isReplacing)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                }
+                                <i class="bi bi-arrow-repeat"></i> Replace File
+                            </button>
+                        }
+                    </div>
+
+                    <!-- Delete Section -->
+                    <div class="mb-3">
+                        <h6 class="border-bottom pb-2 text-danger">Danger Zone</h6>
+                        <div class="alert alert-danger">
+                            <i class="bi bi-trash"></i> <strong>Delete Document:</strong> This will mark the document as deleted. Shares will be removed and users will be notified.
+                        </div>
+                        <button class="btn btn-danger" @onclick="ConfirmDelete" disabled="@isDeleting">
+                            @if (isDeleting)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            <i class="bi bi-trash"></i> Delete Document
+                        </button>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="OnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public Document? Document { get; set; }
+    [Parameter] public int UserId { get; set; }
+    [Parameter] public EventCallback OnEditComplete { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string editTitle = "";
+    private string editCategory = "";
+    private string? editDescription = "";
+    private string? editTags = "";
+    private IBrowserFile? replaceFile;
+    private int fileInputKey = 0;
+
+    private bool isSaving = false;
+    private bool isReplacing = false;
+    private bool isDeleting = false;
+    private string? errorMessage;
+    private string? successMessage;
+
+    protected override void OnParametersSet()
+    {
+        if (Document != null && IsVisible)
+        {
+            editTitle = Document.Title;
+            editCategory = Document.Category;
+            editDescription = Document.Description;
+            editTags = Document.Tags;
+            replaceFile = null;
+            fileInputKey++;
+            errorMessage = null;
+            successMessage = null;
+        }
+    }
+
+    private void OnReplaceFileSelected(InputFileChangeEventArgs e)
+    {
+        replaceFile = e.File;
+    }
+
+    private async Task SaveMetadata()
+    {
+        if (Document == null || string.IsNullOrWhiteSpace(editTitle)) return;
+
+        isSaving = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var update = new DocumentMetadataUpdate
+            {
+                Title = editTitle,
+                Description = editDescription,
+                Category = editCategory,
+                Tags = editTags
+            };
+
+            var success = await DocumentService.UpdateDocumentMetadataAsync(Document.DocumentId, UserId, update);
+            if (success)
+            {
+                successMessage = "Metadata saved successfully!";
+                await Task.Delay(1500);
+                await OnEditComplete.InvokeAsync();
+            }
+            else
+            {
+                errorMessage = "Failed to save metadata. You may not have permission.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ReplaceFile()
+    {
+        if (Document == null || replaceFile == null) return;
+
+        isReplacing = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var success = await DocumentService.ReplaceDocumentFileAsync(Document.DocumentId, UserId, replaceFile);
+            if (success)
+            {
+                successMessage = "File replaced successfully!";
+                replaceFile = null;
+                fileInputKey++;
+                await Task.Delay(1500);
+                await OnEditComplete.InvokeAsync();
+            }
+            else
+            {
+                errorMessage = "Failed to replace file. Check file size, type, or permissions.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isReplacing = false;
+        }
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (Document == null) return;
+
+        // Note: In production, use a proper confirmation modal component
+        // For now, this serves as the delete action that should be confirmed in the parent
+        isDeleting = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var success = await DocumentService.DeleteDocumentAsync(Document.DocumentId, UserId);
+            if (success)
+            {
+                successMessage = "Document deleted successfully!";
+                await Task.Delay(1000);
+                await OnEditComplete.InvokeAsync();
+            }
+            else
+            {
+                errorMessage = "Failed to delete document. You may not have permission.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}

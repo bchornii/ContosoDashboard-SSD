@@ -5,6 +5,7 @@
 @attribute [Authorize]
 @inject IDashboardService DashboardService
 @inject INotificationService NotificationService
+@inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Dashboard - ContosoDashboard</PageTitle>
@@ -49,6 +50,14 @@
                     <div class="card-body">
                         <h5 class="card-title">Notifications</h5>
                         <p class="card-text display-4 text-danger">@summary.UnreadNotifications</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card summary-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Documents</h5>
+                        <p class="card-text display-4 text-success">@summary.TotalDocuments</p>
                     </div>
                 </div>
             </div>
@@ -118,12 +127,50 @@
             }
         </div>
     </div>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3>Recent Documents</h3>
+                <a href="/documents" class="btn btn-sm btn-outline-primary">View All Documents</a>
+            </div>
+
+            @if (recentDocuments != null && recentDocuments.Any())
+            {
+                <div class="list-group">
+                    @foreach (var doc in recentDocuments)
+                    {
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="mb-1">
+                                        <i class="bi bi-file-earmark-text"></i> @doc.Title
+                                    </h6>
+                                    <p class="mb-1 text-muted small">
+                                        Uploaded by @doc.UploadedByUser.DisplayName on @doc.UploadedAt.ToString("MMM dd, yyyy HH:mm")
+                                    </p>
+                                </div>
+                                <div>
+                                    <span class="badge bg-info">@doc.Category</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="text-muted">No recent documents</p>
+            }
+        </div>
+    </div>
 </div>
 
 @code {
     private DashboardSummary? summary;
     private List<Announcement>? announcements;
     private List<Notification>? recentNotifications;
+    private List<Document>? recentDocuments;
     private string userName = "User";
     private int currentUserId = 0;
 
@@ -146,6 +193,7 @@
             summary = await DashboardService.GetDashboardSummaryAsync(currentUserId);
             announcements = await DashboardService.GetActiveAnnouncementsAsync();
             recentNotifications = await NotificationService.GetUserNotificationsAsync(currentUserId);
+            recentDocuments = await DashboardService.GetRecentDocumentsAsync(currentUserId, 5);
         }
     }
 

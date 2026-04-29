@@ -110,6 +110,7 @@
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public int UserId { get; set; }
     [Parameter] public int? PresetProjectId { get; set; }
+    [Parameter] public int? TaskId { get; set; }
 
     private DocumentUploadRequest uploadRequest = new();
     private IBrowserFile? selectedFile;
@@ -165,6 +166,12 @@
 
             if (result.Success)
             {
+                // If TaskId is provided, attach the document to the task
+                if (TaskId.HasValue && result.Document != null)
+                {
+                    await DocumentService.AttachToTaskAsync(result.Document.DocumentId, TaskId.Value, UserId);
+                }
+
                 successMessage = $"'{uploadRequest.Title}' uploaded successfully!";
                 await Task.Delay(1000);
                 await OnUploadComplete.InvokeAsync();
