@@ -5,6 +5,7 @@
 @using System.Security.Claims
 @attribute [Authorize]
 @inject IProjectService ProjectService
+@inject IDocumentService DocumentService
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
@@ -151,6 +152,63 @@
                         }
                     </div>
                 </div>
+
+                <!-- Documents Section -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Project Documents</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (projectDocuments == null)
+                        {
+                            <p><em>Loading documents...</em></p>
+                        }
+                        else if (!projectDocuments.Any())
+                        {
+                            <p class="text-muted">No documents uploaded to this project.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Title</th>
+                                            <th>Category</th>
+                                            <th>Uploaded</th>
+                                            <th>Size</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var doc in projectDocuments)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <strong>@doc.Title</strong>
+                                                    @if (doc.ScanStatus == "UnscannedPendingReview")
+                                                    {
+                                                        <span class="badge bg-warning text-dark ms-1">
+                                                            <i class="bi bi-hourglass-split"></i>
+                                                        </span>
+                                                    }
+                                                </td>
+                                                <td><span class="badge bg-secondary">@doc.Category</span></td>
+                                                <td><small class="text-muted">@doc.UploadedAt.ToString("MMM dd, yyyy")</small></td>
+                                                <td><small>@FormatFileSize(doc.FileSizeBytes)</small></td>
+                                                <td>
+                                                    <a href="/documents/download/@doc.DocumentId" class="btn btn-sm btn-outline-primary" title="Download">
+                                                        <i class="bi bi-download"></i>
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
             </div>
 
             <div class="col-md-4">
@@ -237,6 +295,7 @@
     public int ProjectId { get; set; }
 
     private Project? project;
+    private List<Document>? projectDocuments;
     private int currentUserId = 0;
 
     protected override async Task OnInitializedAsync()
@@ -253,6 +312,7 @@
         if (currentUserId > 0)
         {
             project = await ProjectService.GetProjectByIdAsync(ProjectId, currentUserId);
+            projectDocuments = await DocumentService.GetProjectDocumentsAsync(ProjectId, currentUserId);
         }
         
         if (project == null)
@@ -304,5 +364,18 @@
             return $"{names[0][0]}{names[1][0]}".ToUpper();
         }
         return displayName.Length > 0 ? displayName[0].ToString().ToUpper() : "?";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
     }
 }

@@ -1,0 +1,266 @@
+@page "/documents"
+@using ContosoDashboard.Services
+@using ContosoDashboard.Models
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@attribute [Authorize]
+@inject IDocumentService DocumentService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Documents - ContosoDashboard</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1>Documents</h1>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" @onclick="ShowUploadModal">
+                <i class="bi bi-upload"></i> Upload Document
+            </button>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "my" ? "active" : "")" href="#" @onclick='() => SwitchTab("my")' @onclick:preventDefault>
+                <i class="bi bi-file-earmark-text"></i> My Documents
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "shared" ? "active" : "")" href="#" @onclick='() => SwitchTab("shared")' @onclick:preventDefault>
+                <i class="bi bi-share"></i> Shared with Me
+            </a>
+        </li>
+    </ul>
+
+    <!-- Filter/Sort Controls -->
+    @if (activeTab == "my")
+    {
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">Category</label>
+                <select class="form-select" @bind="filterCategory" @bind:after="ApplyFilters">
+                    <option value="">All Categories</option>
+                    <option value="Report">Report</option>
+                    <option value="Specification">Specification</option>
+                    <option value="Presentation">Presentation</option>
+                    <option value="Image">Image</option>
+                    <option value="Spreadsheet">Spreadsheet</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Sort By</label>
+                <select class="form-select" @bind="sortField" @bind:after="ApplyFilters">
+                    <option value="uploadDate">Upload Date (Newest)</option>
+                    <option value="title">Title</option>
+                    <option value="category">Category</option>
+                    <option value="fileSize">File Size</option>
+                </select>
+            </div>
+        </div>
+    }
+
+    @if (documents == null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else if (!documents.Any())
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No documents @(activeTab == "shared" ? "shared with you" : "yet. Upload your first document to get started").
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Category</th>
+                                <th>File Type</th>
+                                <th>Size</th>
+                                <th>Uploaded</th>
+                                @if (activeTab == "shared")
+                                {
+                                    <th>Shared By</th>
+                                }
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var doc in documents)
+                            {
+                                <tr>
+                                    <td>
+                                        <strong>@doc.Title</strong>
+                                        @if (!string.IsNullOrEmpty(doc.Description))
+                                        {
+                                            <br />
+                                            <small class="text-muted">@doc.Description</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">@doc.Category</span>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">@Path.GetExtension(doc.OriginalFileName)</small>
+                                    </td>
+                                    <td>
+                                        <small>@FormatFileSize(doc.FileSizeBytes)</small>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">@doc.UploadedAt.ToString("MMM dd, yyyy")</small>
+                                    </td>
+                                    @if (activeTab == "shared")
+                                    {
+                                        <td>
+                                            <small>@(doc.UploadedByUser?.DisplayName ?? "Unknown")</small>
+                                        </td>
+                                    }
+                                    <td>
+                                        @if (doc.ScanStatus == "Clean")
+                                        {
+                                            <span class="badge bg-success">
+                                                <i class="bi bi-shield-check"></i> Clean
+                                            </span>
+                                        }
+                                        else if (doc.ScanStatus == "UnscannedPendingReview")
+                                        {
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="bi bi-hourglass-split"></i> Pending Scan
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">@doc.ScanStatus</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="/documents/download/@doc.DocumentId" class="btn btn-outline-primary" title="Download">
+                                                <i class="bi bi-download"></i>
+                                            </a>
+                                            @{
+                                                var isPdfOrImage = doc.FileType.Contains("pdf") || doc.FileType.Contains("image");
+                                            }
+                                            @if (isPdfOrImage)
+                                            {
+                                                <a href="/documents/preview/@doc.DocumentId" class="btn btn-outline-info" target="_blank" title="Preview">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<UploadDocumentModal IsVisible="showUploadModal" 
+                     UserId="currentUserId" 
+                     OnUploadComplete="HandleUploadComplete" 
+                     OnClose="() => showUploadModal = false" />
+
+@code {
+    private List<Document>? documents;
+    private int currentUserId;
+    private bool showUploadModal = false;
+    private string activeTab = "my";
+    private string filterCategory = "";
+    private string sortField = "uploadDate";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+        {
+            currentUserId = userId;
+        }
+
+        if (currentUserId > 0)
+        {
+            await LoadDocuments();
+        }
+    }
+
+    private async Task LoadDocuments()
+    {
+        if (activeTab == "my")
+        {
+            var filter = new DocumentFilter
+            {
+                Category = string.IsNullOrEmpty(filterCategory) ? null : filterCategory,
+                IncludeSharedWithMe = false
+            };
+            documents = await DocumentService.GetUserDocumentsAsync(currentUserId, filter);
+            ApplySorting();
+        }
+        else if (activeTab == "shared")
+        {
+            documents = await DocumentService.GetSharedWithMeAsync(currentUserId);
+        }
+    }
+
+    private async Task SwitchTab(string tab)
+    {
+        activeTab = tab;
+        await LoadDocuments();
+    }
+
+    private async Task ApplyFilters()
+    {
+        await LoadDocuments();
+    }
+
+    private void ApplySorting()
+    {
+        if (documents == null) return;
+
+        documents = sortField switch
+        {
+            "title" => documents.OrderBy(d => d.Title).ToList(),
+            "category" => documents.OrderBy(d => d.Category).ThenBy(d => d.Title).ToList(),
+            "fileSize" => documents.OrderByDescending(d => d.FileSizeBytes).ToList(),
+            _ => documents.OrderByDescending(d => d.UploadedAt).ToList()
+        };
+    }
+
+    private void ShowUploadModal()
+    {
+        showUploadModal = true;
+    }
+
+    private async Task HandleUploadComplete()
+    {
+        showUploadModal = false;
+        await LoadDocuments();
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}
+
