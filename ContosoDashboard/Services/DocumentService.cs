@@ -502,27 +502,73 @@ namespace ContosoDashboard.Services
                 if (requestingUser?.Role != UserRole.Administrator) return false;
             }
 
-            // Get all project members except the document owner
-            var projectMembers = await _db.ProjectMembers
+            // Get all project member user IDs except the document owner
+            var projectMemberUserIds = await _db.ProjectMembers
                 .Where(pm => pm.ProjectId == projectId && pm.UserId != doc.UploadedByUserId)
+                .Select(pm => pm.UserId)
                 .ToListAsync();
 
-            int sharedCount = 0;
-            foreach (var member in projectMembers)
+            if (!projectMemberUserIds.Any()) return false;
+
+            // ✅ BATCH OPTIMIZATION: Single query to check existing shares for all members
+            var existingShareUserIds = (await _db.DocumentShares
+                .Where(s => s.DocumentId == documentId && projectMemberUserIds.Contains(s.SharedWithUserId))
+                .Select(s => s.SharedWithUserId)
+                .ToListAsync())
+                .ToHashSet();
+
+            // Filter to only members who don't already have shares
+            var newShareUserIds = projectMemberUserIds.Except(existingShareUserIds).ToList();
+            
+            if (!newShareUserIds.Any())
             {
-                // Check if not already shared
-                bool alreadyShared = await _db.DocumentShares.AnyAsync(s =>
-                    s.DocumentId == documentId && s.SharedWithUserId == member.UserId);
-                
-                if (!alreadyShared)
-                {
-                    var success = await ShareDocumentAsync(documentId, sharedByUserId, member.UserId);
-                    if (success) sharedCount++;
-                }
+                _logger.LogInformation("Document {DocumentId} already shared with all project members", documentId);
+                return false;
             }
 
-            _logger.LogInformation("Shared document {DocumentId} with {Count} project members", documentId, sharedCount);
-            return sharedCount > 0;
+            var now = DateTime.UtcNow;
+
+            // ✅ BATCH INSERT: Create all DocumentShare records at once
+            var newShares = newShareUserIds.Select(userId => new DocumentShare
+            {
+                DocumentId = documentId,
+                SharedByUserId = sharedByUserId,
+                SharedWithUserId = userId,
+                SharedAt = now
+            }).ToList();
+            await _db.DocumentShares.AddRangeAsync(newShares);
+
+            // ✅ BATCH LOG: Create all activity log entries at once
+            var activityLogs = newShareUserIds.Select(userId => new DocumentActivityLog
+            {
+                DocumentId = documentId,
+                ActorUserId = sharedByUserId,
+                Action = "Share",
+                OccurredAt = now,
+                Details = $"Shared with user {userId} (project bulk share)"
+            }).ToList();
+            await _db.DocumentActivityLogs.AddRangeAsync(activityLogs);
+
+            // ✅ SINGLE SAVE: One database round-trip for all inserts
+            await _db.SaveChangesAsync();
+
+            // ✅ BATCH NOTIFICATIONS: Create all notifications at once
+            var notifications = newShareUserIds.Select(userId => new Notification
+            {
+                UserId = userId,
+                Title = "Document shared with you",
+                Message = $"'{doc.Title}' has been shared with you by {doc.UploadedByUser.DisplayName}.",
+                Type = NotificationType.DocumentShared,
+                Priority = NotificationPriority.Informational
+            }).ToList();
+
+            foreach (var notification in notifications)
+            {
+                await _notificationService.CreateNotificationAsync(notification);
+            }
+
+            _logger.LogInformation("Shared document {DocumentId} with {Count} project members", documentId, newShares.Count);
+            return true;
         }
 
         public async Task<bool> RemoveShareAsync(int documentId, int removedByUserId, int sharedWithUserId)
@@ -594,14 +640,11 @@ namespace ContosoDashboard.Services
             if (user.Role != UserRole.Administrator)
             {
                 var projectIds = user.ProjectMemberships.Select(pm => pm.ProjectId).ToList();
-                var sharedDocIds = _db.DocumentShares
-                    .Where(s => s.SharedWithUserId == userId)
-                    .Select(s => s.DocumentId)
-                    .ToList();
 
+                // Use subquery for shared documents - no materialization to memory
                 query = query.Where(d =>
                     d.UploadedByUserId == userId ||
-                    sharedDocIds.Contains(d.DocumentId) ||
+                    _db.DocumentShares.Any(s => s.DocumentId == d.DocumentId && s.SharedWithUserId == userId) ||
                     (d.ProjectId.HasValue && projectIds.Contains(d.ProjectId.Value))
                 );
             }

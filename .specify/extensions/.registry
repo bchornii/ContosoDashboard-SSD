@@ -18,6 +18,52 @@
       },
       "registered_skills": [],
       "installed_at": "2026-04-27T13:52:56.599230+00:00"
+    },
+    "agent-assign": {
+      "version": "1.1.0",
+      "source": "local",
+      "manifest_hash": "sha256:a6172052d4a0d2978743feae05923aae7befcd946438f4c6b45250a47fc16d84",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "copilot": [
+          "speckit.agent-assign.assign",
+          "speckit.agent-assign.validate",
+          "speckit.agent-assign.execute"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-04-30T17:07:20.556631+00:00"
+    },
+    "azure-devops": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:c2835d6d7a037fa33a1224a3f460a83deeaa14aeea4c0090749b4acd78e27405",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "copilot": [
+          "speckit.azure-devops.sync",
+          "speckit.adosync"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-04-30T18:54:28.132500+00:00"
+    },
+    "cleanup": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:b15a5e3b4e5b43f867c093d962492f502b01503d0ec174611d0797854b017578",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "copilot": [
+          "speckit.cleanup.run",
+          "speckit.cleanup"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-04-30T19:13:55.091243+00:00"
     }
   }
 }

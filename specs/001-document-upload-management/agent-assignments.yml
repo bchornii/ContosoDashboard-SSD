@@ -1,0 +1,247 @@
+# Agent Assignments
+# Feature: Document Upload and Management
+# Generated: 2026-04-30
+# Command: /speckit.agent-assign.assign
+
+agents_scanned:
+  - name: "AI Data Remediation Engineer"
+    source: "project"
+    description: "Specialist in self-healing data pipelines — uses air-gapped local SLMs and semantic clustering to automatically detect, classify, and fix data anomalies at scale."
+  - name: "AI Engineer"
+    source: "project"
+    description: "Expert AI/ML engineer specializing in machine learning model development, deployment, and integration into production systems."
+  - name: "Autonomous Optimization Architect"
+    source: "project"
+    description: "Intelligent system governor that continuously shadow-tests APIs for performance while enforcing strict financial and security guardrails."
+  - name: "Backend Architect"
+    source: "project"
+    description: "Senior backend architect specializing in scalable system design, database architecture, API development, and cloud infrastructure."
+  - name: "CMS Developer"
+    source: "project"
+    description: "Drupal and WordPress specialist for theme development, custom plugins/modules, content architecture, and code-first CMS implementation."
+  - name: "Code Reviewer"
+    source: "project"
+    description: "Expert code reviewer who provides constructive, actionable feedback focused on correctness, maintainability, security, and performance."
+  - name: "Codebase Onboarding Engineer"
+    source: "project"
+    description: "Expert developer onboarding specialist who helps new engineers understand unfamiliar codebases fast."
+  - name: "Data Engineer"
+    source: "project"
+    description: "Expert data engineer specializing in building reliable data pipelines, lakehouse architectures, and scalable data infrastructure."
+  - name: "Database Optimizer"
+    source: "project"
+    description: "Expert database specialist focusing on schema design, query optimization, indexing strategies, and performance tuning."
+  - name: "DevOps Automator"
+    source: "project"
+    description: "Expert DevOps engineer specializing in infrastructure automation, CI/CD pipeline development, and cloud operations."
+  - name: "Email Intelligence Engineer"
+    source: "project"
+    description: "Expert in extracting structured, reasoning-ready data from raw email threads for AI agents and automation systems."
+  - name: "Embedded Firmware Engineer"
+    source: "project"
+    description: "Specialist in bare-metal and RTOS firmware - ESP32/ESP-IDF, PlatformIO, Arduino, ARM Cortex-M, STM32 HAL/LL."
+  - name: "Feishu Integration Developer"
+    source: "project"
+    description: "Full-stack integration expert specializing in the Feishu (Lark) Open Platform."
+  - name: "Filament Optimization Specialist"
+    source: "project"
+    description: "Expert in restructuring and optimizing Filament PHP admin interfaces for maximum usability and efficiency."
+  - name: "Frontend Developer"
+    source: "project"
+    description: "Expert frontend developer specializing in modern web technologies, React/Vue/Angular frameworks, UI implementation, and performance optimization."
+  - name: "Git Workflow Master"
+    source: "project"
+    description: "Expert in Git workflows, branching strategies, and version control best practices including conventional commits and rebasing."
+  - name: "Incident Response Commander"
+    source: "project"
+    description: "Expert incident commander specializing in production incident management, structured response coordination, and post-mortem facilitation."
+  - name: "Minimal Change Engineer"
+    source: "project"
+    description: "Engineering specialist focused on minimum-viable diffs — fixes only what was asked, refuses scope creep."
+  - name: "Mobile App Builder"
+    source: "project"
+    description: "Specialized mobile application developer with expertise in native iOS/Android development and cross-platform frameworks."
+  - name: "Rapid Prototyper"
+    source: "project"
+    description: "Specialized in ultra-fast proof-of-concept development and MVP creation using efficient tools and frameworks."
+  - name: "Security Engineer"
+    source: "project"
+    description: "Expert application security engineer specializing in threat modeling, vulnerability assessment, and secure code review."
+  - name: "Senior Developer"
+    source: "project"
+    description: "Premium implementation specialist - Masters Laravel/Livewire/FluxUI, advanced CSS, Three.js integration."
+  - name: "Software Architect"
+    source: "project"
+    description: "Expert software architect specializing in system design, domain-driven design, architectural patterns, and technical decision-making."
+  - name: "Solidity Smart Contract Engineer"
+    source: "project"
+    description: "Expert Solidity developer specializing in EVM smart contract architecture, gas optimization, and DeFi protocol development."
+  - name: "SRE (Site Reliability Engineer)"
+    source: "project"
+    description: "Expert site reliability engineer specializing in SLOs, error budgets, observability, chaos engineering, and toil reduction."
+  - name: "Technical Writer"
+    source: "project"
+    description: "Expert technical writer specializing in developer documentation, API references, README files, and tutorials."
+  - name: "Threat Detection Engineer"
+    source: "project"
+    description: "Expert detection engineer specializing in SIEM rule development, MITRE ATT&CK coverage mapping, and threat hunting."
+  - name: "Voice AI Integration Engineer"
+    source: "project"
+    description: "Expert in building end-to-end speech transcription pipelines using Whisper-style models and cloud ASR services."
+  - name: "WeChat Mini Program Developer"
+    source: "project"
+    description: "Expert WeChat Mini Program developer specializing in 小程序 development with WXML/WXSS/WXS and WeChat API integration."
+
+assignments:
+  T001:
+    agent: "DevOps Automator"
+    reason: "Infrastructure and build configuration - creating gitkeep and configuring gitignore"
+  T002:
+    agent: "Backend Architect"
+    reason: "Data model design and entity architecture - Document entity class"
+  T003:
+    agent: "Backend Architect"
+    reason: "Data model design and entity architecture - DocumentShare entity class"
+  T004:
+    agent: "Backend Architect"
+    reason: "Data model design and entity architecture - DocumentActivityLog entity class"
+  T005:
+    agent: "Backend Architect"
+    reason: "Data model design and entity architecture - TaskDocument entity class"
+  T006:
+    agent: "Backend Architect"
+    reason: "Data model extension - adding NotificationType enum values"
+  T007:
+    agent: "Database Optimizer"
+    reason: "EF Core configuration and relationship mapping in ApplicationDbContext"
+  T008:
+    agent: "Database Optimizer"
+    reason: "Database migration management - EF Core migration generation"
+  T009:
+    agent: "Backend Architect"
+    reason: "Service layer architecture and contracts - IDocumentService interface and DTOs"
+  T010:
+    agent: "Security Engineer"
+    reason: "File I/O with security path-traversal protection - LocalFileStorageService implementation"
+  T011:
+    agent: "Backend Architect"
+    reason: "Service abstraction for virus scanning - IVirusScanService and stub"
+  T012:
+    agent: "Backend Architect"
+    reason: "Service abstraction for async processing - IScanQueueService and no-op implementation"
+  T013:
+    agent: "Backend Architect"
+    reason: "API controller scaffolding - DocumentsController with authorization"
+  T014:
+    agent: "Backend Architect"
+    reason: "DI configuration - service registration and MapControllers setup"
+  T015:
+    agent: "Backend Architect"
+    reason: "Core business logic with validation - DocumentService.UploadDocumentAsync"
+  T016:
+    agent: "Frontend Developer"
+    reason: "Blazor UI component with file upload - UploadDocumentModal.razor"
+  T017:
+    agent: "Frontend Developer"
+    reason: "Blazor page routing and layout - Documents.razor page"
+  T018:
+    agent: "Frontend Developer"
+    reason: "Navigation UI update - add Documents link to NavMenu"
+  T019:
+    agent: "Backend Architect"
+    reason: "LINQ query with filtering/sorting - GetMyDocumentsAsync"
+  T020:
+    agent: "Backend Architect"
+    reason: "LINQ query with authorization - GetProjectDocumentsAsync"
+  T021:
+    agent: "Frontend Developer"
+    reason: "Complex UI with tables and controls - tabbed layout with sort/filter"
+  T022:
+    agent: "Frontend Developer"
+    reason: "UI section integration - Documents section in ProjectDetails"
+  T023:
+    agent: "Backend Architect"
+    reason: "Complex search query with security - SearchDocumentsAsync with IDOR protection"
+  T024:
+    agent: "Frontend Developer"
+    reason: "Search UI with debouncing - search input in Documents page"
+  T025:
+    agent: "Backend Architect"
+    reason: "Document retrieval with authorization - GetDocumentAsync and DownloadAsync"
+  T026:
+    agent: "Backend Architect"
+    reason: "File streaming endpoints - download/preview controller actions"
+  T027:
+    agent: "Frontend Developer"
+    reason: "UI action buttons - download/preview buttons"
+  T028:
+    agent: "Backend Architect"
+    reason: "Update operation with auth - UpdateDocumentMetadataAsync"
+  T029:
+    agent: "Backend Architect"
+    reason: "File replacement logic - ReplaceDocumentFileAsync"
+  T030:
+    agent: "Backend Architect"
+    reason: "Soft delete with cascading logic - DeleteDocumentAsync with notifications"
+  T031:
+    agent: "Frontend Developer"
+    reason: "CRUD UI components - edit/replace/delete UI in Documents page"
+  T032:
+    agent: "Backend Architect"
+    reason: "Sharing logic with notifications - ShareDocumentAsync"
+  T033:
+    agent: "Backend Architect"
+    reason: "Bulk sharing for project teams - ShareDocumentWithProjectAsync"
+  T034:
+    agent: "Backend Architect"
+    reason: "Query for shared documents - GetSharedWithMeAsync"
+  T035:
+    agent: "Frontend Developer"
+    reason: "Tab UI and sharing picker - Shared with Me tab and Share button"
+  T036:
+    agent: "Backend Architect"
+    reason: "Join table management - AttachDocumentToTaskAsync"
+  T037:
+    agent: "Backend Architect"
+    reason: "Dashboard query methods - GetRecentDocumentsAsync and counts"
+  T038:
+    agent: "Backend Architect"
+    reason: "Service integration - update DashboardService with document stats"
+  T039:
+    agent: "Frontend Developer"
+    reason: "Task detail UI section - Related Documents in Tasks.razor"
+  T040:
+    agent: "Frontend Developer"
+    reason: "Dashboard widget - Recent Documents widget in Index"
+  T041:
+    agent: "Backend Architect"
+    reason: "Admin reporting queries - GetUnscannedDocumentsAsync and logs"
+  T042:
+    agent: "Frontend Developer"
+    reason: "Admin UI with pagination - Activity Log tab for administrators"
+  T043:
+    agent: "SRE (Site Reliability Engineer)"
+    reason: "Background service infrastructure - ScanProcessorHostedService creation"
+  T044:
+    agent: "SRE (Site Reliability Engineer)"
+    reason: "Background processing logic - scan cycle with error handling"
+  T045:
+    agent: "Backend Architect"
+    reason: "Service registration - register ScanProcessorHostedService"
+  T046:
+    agent: "Security Engineer"
+    reason: "Security hardening verification - verify security guards and authorization"
+  T047:
+    agent: "Frontend Developer"
+    reason: "UI visual indicators - scan-status badges"
+  T048:
+    agent: "Code Reviewer"
+    reason: "Integration testing and validation - end-to-end validation per quickstart"
+  
+  # Tech Debt Tasks (Added 2026-04-30 via /speckit.cleanup)
+  TD001:
+    agent: "Database Optimizer"
+    reason: "Query optimization - refactor SearchDocumentsAsync to use EF Core subquery instead of loading sharedDocIds into memory"
+  TD002:
+    agent: "Database Optimizer"
+    reason: "Batch operations - eliminate N+1 query pattern in ShareDocumentWithProjectAsync by bulk-inserting shares and batching notifications"
